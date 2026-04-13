@@ -180,10 +180,16 @@ Uses `agent-shell-opencode-authentication' for authentication configuration."
 (defun agent-shell-opencode--ascii-art ()
   "OpenCode ASCII art."
   (let* ((is-dark (eq (frame-parameter nil 'background-mode) 'dark))
-         (text "OpenCode"))
+         (art (string-trim "
+                                  ▄
+ █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█
+ █░░█ █░░█ █▀▀▀ █░░█ █░░░ █░░█ █░░█ █▀▀▀
+ ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
+" "\n"))
+        (text art))
     (propertize text 'font-lock-face (if is-dark
-                                         '(:foreground "#4a9eff" :inherit fixed-pitch)
-                                       '(:foreground "#2563eb" :inherit fixed-pitch)))))
+                                     '(:foreground "#4a9eff" :inherit fixed-pitch)
+                                   '(:foreground "#2563eb" :inherit fixed-pitch)))))
 
 (provide 'agent-shell-opencode)
 
