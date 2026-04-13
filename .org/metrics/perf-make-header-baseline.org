@@ -1,7 +1,0 @@
-* Baseline
-
-- time: 0.044991
-- gc-time: 0.000000
-- gcs: 0
-- conses: 133951
-
