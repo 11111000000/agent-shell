@@ -1,0 +1,209 @@
+* Bypass And Roadmap
+
+Этот документ разделяет меры на две группы:
+
+1. Что можно снизить настройками `agent-shell` уже сейчас.
+2. Что требует исправлений в коде, потому что конфиг только маскирует симптом.
+
+** Диаектический вывод
+
+Проблема не сводится к одному дорогому вызову. Нагрузка возникает из связки:
+
+`notification -> several fragment updates -> repeated text-property searches -> markdown overlays -> header/modeline refresh -> GC`
+
+Поэтому часть мер действительно полезна как обход, но без кода они не убирают корень.
+
+** Что можно сделать конфигом
+
+*** 1. `agent-shell-prefer-viewport-interaction` = nil
+
+Что даёт:
+- Убирает двойную работу viewport + shell.
+- Не запускает отдельные viewport refresh/update проходы для каждого фрагмента.
+
+Почему это реально:
+- `agent-shell--update-fragment` обновляет viewport, если он существует.
+- `agent-shell-viewport--initialize` всегда прогоняет `markdown-overlays-put`.
+
+Ограничение:
+- Shell-buffer hot path остаётся.
+
+*** 2. `agent-shell-header-style` = `text`
+
+Что даёт:
+- Избегает графического SVG header path.
+- Убирает часть нагрузки от `svg-create`/`svg-embed`/`svg-insert-image`.
+
+Почему это лучше, чем `none`:
+- `none` не отменяет вычисление header-model и mode-line path.
+- `text` сохраняет простой header и не тянет SVG.
+
+Ограничение:
+- `agent-shell--make-header` всё равно строит модель и текст header.
+
+*** 3. `agent-shell-show-busy-indicator` = nil
+
+Что даёт:
+- Убирает периодические heartbeat-driven redraws busy indicator.
+- Снижает количество пересборок header/mode-line.
+
+Почему это реально:
+- В `agent-shell--handle` heartbeat запускается только если эта опция включена.
+- В `agent-shell--busy-indicator-frame` есть отдельный вычислительный путь.
+
+Ограничение:
+- Notification-driven updates всё равно останутся.
+
+*** 4. `agent-shell-show-context-usage-indicator` = nil
+
+Что даёт:
+- Убирает вычисление usage indicator при обновлениях header/mode-line.
+
+Почему это реально:
+- `agent-shell--context-usage-indicator` вызывается из `agent-shell--make-header` и mode-line.
+
+Ограничение:
+- Это лишь один кусок header cost.
+
+*** 5. `agent-shell-highlight-blocks` = nil
+
+Что даёт:
+- Не включает дополнительное markdown block highlighting.
+
+Почему это реально:
+- `markdown-overlays-put` получает `markdown-overlays-highlight-blocks` из этой переменной.
+
+Ограничение:
+- Это уже default; включать не стоит, если важна скорость.
+
+*** 6. `agent-shell-show-welcome-message` = nil
+
+Что даёт:
+- Уменьшает работу на старте нового shell.
+
+Ограничение:
+- Не влияет на runtime notification path.
+
+*** 7. `agent-shell-show-session-id` = nil
+
+Что даёт:
+- Меньше работы при header/modeline render.
+
+Ограничение:
+- Это локальная экономия.
+
+*** 8. `agent-shell-show-config-icons` = nil
+
+Что даёт:
+- Убирает icon fetch/render cost в выборке конфигов.
+
+Ограничение:
+- Это startup/selection cost, не main notification hot path.
+
+*** 9. `agent-shell-section-functions` = nil
+
+Что даёт:
+- Не запускает дополнительные hooks после обновления фрагмента.
+
+Ограничение:
+- В коде это already optional, но лучше оставить пустым, если важна latency.
+
+** Что требует исправлений в коде
+
+*** 1. Убрать повторный поиск range для одного и того же блока
+
+Сейчас:
+- `agent-shell-ui-update-fragment` ищет существующий блок по `text-property-search-backward`.
+- Потом `agent-shell-ui--read-fragment-at-point` заново вычисляет границы через `agent-shell-ui--block-range`.
+- `agent-shell-ui--block-range` снова вызывает `agent-shell-ui--nearest-range-matching-property`.
+
+Нужно:
+- Возвращать block range из первого поиска и переиспользовать его.
+- Не пересчитывать диапазон, если он уже известен.
+
+*** 2. Упростить `agent-shell-ui--nearest-range-matching-property`
+
+Сейчас:
+- Делает backward search.
+- Потом forward search.
+- При промахе повторяет backward search после `forward-char`.
+
+Нужно:
+- Свести к одному поиску в типичном случае.
+- Или хранить range в state/text properties.
+
+*** 3. Батчить обработку notification
+
+Сейчас один ACP notification может вызвать несколько `agent-shell--update-fragment` подряд.
+
+Нужно:
+- Собирать изменения по notification в один batch.
+- Делать header refresh один раз в конце обработки.
+- Снижать число markdown overlay проходов.
+
+*** 4. Кешировать header inputs и строить header только при изменении relevant state
+
+Сейчас `agent-shell--update-header-and-mode-line` и `agent-shell--mode-line-format` строят header/modeline очень часто.
+
+Нужно:
+- Dirty flags для model/mode/project/usage/busy.
+- Не пересчитывать то, что не менялось.
+- Кешировать `agent-shell--project-name`, `agent-shell--resolve-session-mode-name`, `agent-shell--context-usage-indicator`.
+
+*** 5. Сделать `markdown-overlays-put` инкрементальным
+
+Сейчас:
+- После каждого update фрагмента прогоняется полная markdown overlay pass по body/right label.
+
+Нужно:
+- Не перезапускать overlays, если текст не менялся.
+- Для append-режима обновлять только добавленный tail.
+- Не прогонять overlay для коротких labels, где markdown не нужен.
+
+*** 6. Сократить построение меню модели и режима
+
+Сейчас `agent-shell--mode-line-model-menu` и `agent-shell--mode-line-mode-menu` заново обходят списки и создают menu/keymap data.
+
+Нужно:
+- Кешировать меню до изменения списка моделей/режимов.
+- Перестраивать только при изменении session state.
+
+** Таблица обходов
+
+| Мера | Тип | Эффект | Риск |
+|------|-----|--------|------|
+| `agent-shell-prefer-viewport-interaction` = nil | config | меньше дублирования UI work | теряем viewport UX |
+| `agent-shell-header-style` = `text` | config | без SVG header path | header остаётся |
+| `agent-shell-show-busy-indicator` = nil | config | меньше heartbeat redraws | нет busy animation |
+| `agent-shell-show-context-usage-indicator` = nil | config | меньше header cost | нет usage badge |
+| `agent-shell-highlight-blocks` = nil | config | меньше markdown work | уже default |
+| `agent-shell-section-functions` пустой | config | без extra hooks | потеря extension points |
+| cache ranges/header/menus | code | реальное снижение CPU | нужен refactor |
+| batch notification handling | code | меньше update storms | более сложная логика |
+| incremental markdown overlays | code | снижает render cost | аккуратность реализации |
+
+** План доработок
+
+*** Phase 1: low risk
+
+1. Добавить кеши для header inputs.
+2. Не строить графический header, если style не graphical.
+3. Убрать лишние calls в mode-line/header path.
+
+*** Phase 2: medium risk
+
+1. Передавать ranges из `agent-shell-ui-update-fragment` дальше по цепочке.
+2. Убрать повторный `read-fragment-at-point` там, где уже есть match.
+3. Брать block start/end без повторного поиска по text properties.
+
+*** Phase 3: higher impact
+
+1. Batch обработка notification.
+2. Incremental markdown overlays.
+3. Кеширование mode/model menu.
+
+*** Phase 4: validate
+
+1. Снять новый CPU profile на том же сценарии.
+2. Сравнить долю `agent-shell-ui--read-fragment-at-point`, `agent-shell--make-header`, `markdown-overlays-put`.
+3. Проверить, что поведение не изменилось функционально.

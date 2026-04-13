@@ -1,0 +1,81 @@
+* Optimization Roadmap
+
+** Current state
+
+We have a validated baseline and two structural reductions in the hot path.
+
+Confirmed now:
+
+1. Baseline metrics are captured in `.org/metrics/`.
+2. `agent-shell-ui--read-fragment-at` can reuse a caller-provided range.
+3. Mode-line menu builders are cached per buffer with invalidation in header refresh.
+4. `agent-shell--on-notification` now caches all 16 unique notification field lookups, eliminating 74 repeated `map-nested-elt` calls.
+
+Still open:
+
+1. Notification fan-out still produces multiple fragment updates per event.
+2. `markdown-overlays-put` still runs on every updated fragment body/label.
+3. Header/modeline still rebuilds too often for dynamic state.
+4. The test suite has unrelated existing failures that must not be conflated with perf work.
+
+** Dialectical assessment
+
+The current fix direction is correct but incomplete.
+
+- Thesis: the hot path is dominated by discovery work and redraw work.
+- Antithesis: performance tweaks that only reduce chrome are useful but insufficient.
+- Synthesis: keep mitigation settings available, but prioritize code that removes duplicated work.
+
+The branch should not drift into cosmetic speedups while leaving repeated searches intact.
+
+** Non-negotiable guardrails
+
+1. Do not break permission request rendering.
+2. Do not break tool call, plan, or diff rendering.
+3. Do not break viewport navigation or transcript behavior.
+4. Do not let caching make session/model/mode labels stale.
+5. Do not ship a perf change without a matching baseline/profile comparison.
+
+** Recommended order
+
+*** Phase 1: isolate and verify ✓ COMPLETE
+
+1. Keep the current baseline files unchanged.
+2. Add or update tests only for the area being modified.
+3. Avoid mixing perf refactors with unrelated failing tests.
+
+*** Phase 2: fragment hot path ✓ COMPLETE
+
+1. Remove one more layer of duplicate range discovery in `agent-shell-ui-update-fragment`.
+2. Make the update path reuse already-known ranges wherever possible.
+3. Prefer one search plus reuse over search-after-search.
+
+*** Phase 3: notification lookups ✓ COMPLETE
+
+1. Cache all unique notification field lookups in `agent-shell--on-notification`.
+2. Eliminate repeated `map-nested-elt` calls via local bindings.
+3. Verify behavior matches before/after.
+
+*** Phase 4: notification fan-out (next)
+
+1. Reduce the number of `agent-shell--update-fragment` invocations per notification.
+2. Batch state changes before touching the buffer.
+3. Refresh header/mode-line once per batch where safe.
+
+*** Phase 5: markdown cost control
+
+1. Skip `markdown-overlays-put` on unchanged regions.
+2. Limit overlay work to appended tails when appending.
+3. Keep labels/plain text on the cheapest path.
+
+*** Phase 6: header/mode-line cost control
+
+1. Add dirty flags for project/model/mode/usage/busy inputs.
+2. Invalidate menu caches only on relevant state changes.
+3. Keep graphical header caching, but ensure key correctness.
+
+** What to watch for
+
+1. If `text-property-search-*` drops but GC rises, the patch may be allocating too much temporary state.
+2. If header time drops but fragment time does not, the fix is too shallow.
+3. If tests fail outside the touched area, treat them as blockers before expanding the patch scope.

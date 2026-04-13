@@ -93,10 +93,13 @@ For existing blocks, the current expansion state is preserved unless overridden.
           (goto-char (prop-match-beginning match)))
         (if (and match (not create-new))
             ;; Found existing block - delete and regenerate
-            (let* ((existing-model (agent-shell-ui--read-fragment-at-point))
+           (let* ((existing-range `((:start . ,(prop-match-beginning match))
+                                    (:end . ,(prop-match-end match))))
+                  (existing-model (agent-shell-ui--read-fragment-at-point
+                                   :range existing-range))
                    (state (get-text-property (point) 'agent-shell-ui-state))
                    (existing-body (map-elt existing-model :body))
-                   (block-end (prop-match-end match))
+                   (block-end (map-elt existing-range :end))
                    (final-body (if new-body
                                    (if (and append existing-body)
                                        (concat existing-body new-body)
@@ -154,11 +157,11 @@ For existing blocks, the current expansion state is preserved unless overridden.
                                      (cons :end padding-end)))))))))
 
 
-(defun agent-shell-ui--read-fragment-at (position qualified-id)
+(cl-defun agent-shell-ui--read-fragment-at (position qualified-id &key range)
   "Read fragment at POSITION with QUALIFIED-ID."
   (when-let ((fragment (list (cons :block-id qualified-id)))
              (state (get-text-property position 'agent-shell-ui-state))
-             (range (agent-shell-ui--block-range :position position)))
+             (range (or range (agent-shell-ui--block-range :position position))))
     ;; TODO: Get rid of merging block namespace and id.
     ;; Extract namespace-id from qualified-id if it contains a dash
     (when (string-match "^\\(.+\\)-\\(.+\\)$" qualified-id)
@@ -209,12 +212,13 @@ When NO-UNDO is non-nil, disable undo recording for this operation."
           (setq block-end (point))
           (delete-region block-start block-end))))))
 
-(defun agent-shell-ui--read-fragment-at-point ()
+(cl-defun agent-shell-ui--read-fragment-at-point (&key range)
   "Read fragment at point, returning model or nil if none found."
   (when-let ((state (get-text-property (point) 'agent-shell-ui-state))
-             (range (agent-shell-ui--block-range :position (point))))
+             (range (or range (agent-shell-ui--block-range :position (point)))))
     (agent-shell-ui--read-fragment-at (map-elt range :start)
-                                      (map-elt state :qualified-id))))
+                                      (map-elt state :qualified-id)
+                                      :range range)))
 
 (cl-defun agent-shell-ui--block-range (&key position)
   "Get block range at POSITION if found.  Nil otherwise.

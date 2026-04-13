@@ -1,0 +1,23 @@
+* Next Steps
+
+Это уже не предположения, а проверяемые направления для оптимизации.
+
+1. Убрать повторный поиск фрагмента при update, если можно передавать start/end из caller.
+2. Сократить число `agent-shell--update-fragment` на один notification.
+3. Кешировать header/modeline input дольше, чем на один redraw.
+4. Проверить, можно ли не вызывать `markdown-overlays-put` для неизменившихся regions.
+5. Если нужен следующий этап, я могу уже предложить минимальный patch plan по каждому hotspot.
+
+** Proposed patch order
+
+1. Cache and reuse fragment ranges in `agent-shell-ui-update-fragment`.
+2. Make header/mode-line updates dirty-flag driven.
+3. Skip markdown overlays when region content is unchanged.
+4. Batch multiple fragment updates caused by one notification.
+5. Add benchmarks/profiles for the same scenario to prove wins.
+
+** Dialectical rule of thumb
+
+1. If a measure only changes presentation, classify it as mitigation.
+2. If a measure removes duplicated search/update work, classify it as a fix.
+3. If a measure reduces both, do it first.

@@ -2160,5 +2160,59 @@ that fallback buffer, potentially starting the new shell in the wrong project."
       (when-let ((buf (get-buffer "*test-restart-new-shell*")))
         (kill-buffer buf)))))
 
+(ert-deftest agent-shell-ui-read-fragment-at-reuses-provided-range ()
+  "`agent-shell-ui--read-fragment-at' should accept a caller-supplied range."
+  (with-temp-buffer
+    (let ((agent-shell-ui--content-store (make-hash-table :test 'equal)))
+      (insert "body")
+      (put-text-property (point-min) (point-max)
+                         'agent-shell-ui-state
+                         '((:qualified-id . "ns-1") (:collapsed . nil)))
+      (goto-char (point-min))
+      (cl-letf (((symbol-function 'agent-shell-ui--block-range)
+                 (lambda (&rest _)
+                   (error "unexpected block-range lookup"))))
+        (let ((result (agent-shell-ui--read-fragment-at
+                       (point)
+                       "ns-1"
+                       :range '((:start . 1) (:end . 5)))))
+        (should result)
+        (should (equal (map-elt result :block-id) "1")))))))
+
+(ert-deftest agent-shell-mode-line-menu-cache-tests ()
+  "Mode-line menus should cache within a buffer."
+  (with-temp-buffer
+    (let ((major-mode 'agent-shell-mode))
+    (let ((agent-shell--mode-line-model-menu-cache nil)
+          (agent-shell--mode-line-mode-menu-cache nil)
+          (agent-shell--state '((:session . ((:model-id . "m1")
+                                             (:models [((:model-id . "m1") (:name . "Model 1"))])
+                                             (:mode-id . "mode-1")
+                                             (:modes [((:id . "mode-1") (:name . "Mode 1"))])))))
+          (model-calls 0)
+          (mode-calls 0))
+      (cl-letf (((symbol-function 'agent-shell--mode-line-model-menu)
+                 (lambda () (cl-incf model-calls) 'model-menu))
+                ((symbol-function 'agent-shell--mode-line-mode-menu)
+                 (lambda () (cl-incf mode-calls) 'mode-menu))
+                ((symbol-function 'agent-shell--get-available-modes)
+                 (lambda (&rest _) '((:id . "mode-1") (:name . "Mode 1"))))
+                ((symbol-function 'agent-shell--state)
+                 (lambda () agent-shell--state)))
+        (agent-shell--cached-mode-line-model-menu)
+        (agent-shell--cached-mode-line-model-menu)
+        (agent-shell--cached-mode-line-mode-menu)
+        (agent-shell--cached-mode-line-mode-menu)
+        (should (= model-calls 1))
+        (should (= mode-calls 1))
+        (setq agent-shell--state '((:session . ((:model-id . "m2")
+                                                (:models [((:model-id . "m2") (:name . "Model 2"))])
+                                                (:mode-id . "mode-2")
+                                                (:modes [((:id . "mode-2") (:name . "Mode 2"))])))))
+        (agent-shell--cached-mode-line-model-menu)
+        (agent-shell--cached-mode-line-mode-menu)
+        (should (= model-calls 2))
+        (should (= mode-calls 2)))))))
+
 (provide 'agent-shell-tests)
 ;;; agent-shell-tests.el ends here

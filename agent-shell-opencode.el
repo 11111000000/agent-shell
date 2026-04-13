@@ -170,22 +170,17 @@ Uses `agent-shell-opencode-authentication' for authentication configuration."
 
 (defun agent-shell-opencode--welcome-message (config)
   "Return OpenCode welcome message using `shell-maker' CONFIG."
-  (let ((art (agent-shell--indent-string 4 (agent-shell-opencode--ascii-art)))
+  (let ((art (agent-shell-opencode--ascii-art))
         (message (string-trim-left (shell-maker-welcome-message config) "\n")))
-    (concat "\n\n"
+    (concat "\n"
             art
-            "\n\n"
+            "\n"
             message)))
 
 (defun agent-shell-opencode--ascii-art ()
   "OpenCode ASCII art."
   (let* ((is-dark (eq (frame-parameter nil 'background-mode) 'dark))
-         (text (string-trim "
-                                  ▄
- █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█
- █░░█ █░░█ █▀▀▀ █░░█ █░░░ █░░█ █░░█ █▀▀▀
- ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀  ▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
-" "\n")))
+         (text "OpenCode"))
     (propertize text 'font-lock-face (if is-dark
                                          '(:foreground "#4a9eff" :inherit fixed-pitch)
                                        '(:foreground "#2563eb" :inherit fixed-pitch)))))

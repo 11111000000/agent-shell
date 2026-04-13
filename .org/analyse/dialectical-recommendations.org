@@ -1,0 +1,200 @@
+* Dialectical Recommendations
+
+** Thesis
+
+`agent-shell` тормозит в основном из-за цепочки:
+
+`ACP notification -> repeated fragment updates -> repeated text-property searches -> markdown overlays -> header/modeline refresh -> GC`
+
+Это подтверждается профилем и кодом горячих путей.
+
+** Antithesis
+
+Настройки помогают, но они не устраняют базовый механизм:
+
+1. `agent-shell-header-style` меняет форму рендера header, но не отменяет сам факт частой пересборки.
+2. `agent-shell-show-busy-indicator` и `agent-shell-show-context-usage-indicator` убирают часть вычислений, но не touch the fragment search storm.
+3. `agent-shell-prefer-viewport-interaction` может уменьшить дублирование work, но если viewport открыт, `markdown-overlays-put` все равно платит цену.
+
+Вывод: конфиг - это облегчение симптомов, не лечение причины.
+
+** Synthesis
+
+Правильная стратегия должна быть двухслойной:
+
+1. Немедленно снизить частоту и стоимость UI work через конфиг.
+2. Исправить архитектурные hot paths в коде.
+
+** What to do now
+
+*** Config changes with real value
+
+1. `agent-shell-header-style` -> `text`
+   - Снижает SVG / image header cost.
+   - Хорошо как безопасная деградация.
+
+2. `agent-shell-show-busy-indicator` -> `nil`
+   - Убирает heartbeat-driven redraw noise.
+   - Особенно полезно при длинных ответах.
+
+3. `agent-shell-show-context-usage-indicator` -> `nil`
+   - Убирает usage badge cost.
+   - Малый, но честный выигрыш.
+
+4. `agent-shell-prefer-viewport-interaction` -> `nil` если viewport не нужен постоянно
+   - Снимает часть duplicate rendering path.
+   - Если viewport нужен, оставлять включенным только ради UX.
+
+5. `agent-shell-section-functions` -> nil
+   - Не добавлять внешний hook cost к уже тяжелому update path.
+
+6. `agent-shell-highlight-blocks` -> nil
+   - Не включать дополнительную markdown pass.
+
+*** Code changes with real leverage
+
+1. Reuse the block match returned by `agent-shell-ui-update-fragment`.
+2. Make `agent-shell-ui--nearest-range-matching-property` cheaper or avoid it in the hot path.
+3. Batch multiple fragment updates from a single notification.
+4. Reduce `markdown-overlays-put` to changed regions only.
+5. Cache header/modeline inputs and recompute only on state deltas.
+6. Cache mode/model menus until session metadata changes.
+
+** Concrete recommendations
+
+*** Tier 1: immediate mitigation
+
+Goal: cut UI noise without semantics changes.
+
+Recommended settings:
+
+- `agent-shell-header-style` = `text`
+- `agent-shell-show-busy-indicator` = `nil`
+- `agent-shell-show-context-usage-indicator` = `nil`
+- `agent-shell-section-functions` = `nil`
+- keep `agent-shell-highlight-blocks` off
+
+Expected effect:
+
+- less header recomputation pressure
+- less redraw churn
+- less markdown overlay work on the edges
+
+Risk:
+
+- reduced visual richness
+- no real fix for notification hot path
+
+*** Tier 2: structural fix
+
+Goal: reduce CPU per notification.
+
+Required changes:
+
+1. Make `agent-shell--on-notification` aggregate update intents before touching the buffer.
+2. Carry the result of the initial property search forward instead of rediscovering it.
+3. Store and reuse derived header inputs until session state changes.
+4. Skip overlaying unchanged body/label ranges.
+
+Expected effect:
+
+- direct drop in `text-property-search-*`
+- lower GC
+- fewer repeated overlay passes
+
+Risk:
+
+- moderate refactor complexity
+- tests need to assert visual and state equivalence
+
+** Concrete plan
+
+*** Phase A: measure and gate
+
+1. Add a second profile on the same workload after each step.
+2. Track these functions specifically:
+   - `agent-shell--on-notification`
+   - `agent-shell-ui-update-fragment`
+   - `agent-shell-ui--read-fragment-at-point`
+   - `agent-shell--make-header`
+   - `markdown-overlays-put`
+3. Fail the optimization if UI behavior changes or profile shifts into a different hotspot without overall win.
+
+*** Phase B: low-risk reduction
+
+1. Switch to `text` header style by default on slower environments or make it an advised recommendation.
+2. Disable busy indicator and context indicator in default examples for performance-sensitive setups.
+3. Keep viewport interaction opt-in for users who don't need it.
+
+*** Phase C: hot path refactor
+
+1. In `agent-shell-ui-update-fragment`, return exact block range and padding once.
+2. In `agent-shell--update-fragment`, do not call back into functions that rediscover the same range.
+3. Introduce dirty flags for header/mode-line inputs.
+4. Cache menu/keymap builders until relevant session metadata changes.
+
+*** Phase D: markdown pass reduction
+
+1. Update only appended tail when appending body text.
+2. Skip re-running markdown overlays on labels that are plain text.
+3. Re-run overlay only when the region content actually changed.
+
+*** Phase E: verification
+
+1. Re-run the same CPU profile.
+2. Confirm the big wins move from `agent-shell-ui--read-fragment-at-point` and `markdown-overlays-put`.
+3. Confirm no regression in fragment navigation, collapse/expand, and mode-line actions.
+
+** Risk guardrails
+
+1. Do not change the semantics of `agent-shell--on-notification` without tests for permission requests, tool calls, plan rendering, and message chunks.
+2. Do not remove markdown overlays for regions that render user-visible markdown unless baseline tests cover the exact output.
+3. Do not cache header/model menus without invalidation tests tied to session state changes.
+4. Do not ship a perf fix until the new performance baseline is recorded and a post-change profile is comparable.
+
+** Baseline status
+
+Performance baseline is now captured under `.org/metrics/` using a clean Emacs batch run with package paths provided explicitly.
+
+Current baseline files:
+
+1. `.org/metrics/perf-ui-update-fragment-baseline.org`
+2. `.org/metrics/perf-make-header-baseline.org`
+
+** Current implementation note
+
+The branch now has the first structural reduction in the hot path:
+
+1. `agent-shell-ui--read-fragment-at-point` can reuse a range passed from the caller.
+2. Mode-line model and mode menus are cached per buffer.
+
+This is still partial; the notification storm and markdown overlay work remain.
+
+** New risk observation
+
+The first cache attempt for mode-line menus needs invalidation keys tied to session state. Without that, cached menus would risk stale labels after model/mode changes.
+
+The new fragment range reuse is safe only when the caller really owns the range; otherwise the old search path must remain available.
+
+** Plan linkage
+
+The roadmap now needs to stay aligned with the current reality:
+
+1. baseline captured
+2. first range reuse landed
+3. mode-line menu caching landed, but needs careful invalidation
+4. remaining work is notification batching and markdown/header cost control
+
+** Current focus
+
+The next step is to simplify `agent-shell--on-notification` by binding repeated notification fields once, then using those bindings across the existing branches.
+
+This keeps behavior unchanged while lowering repeated lookup cost and making later batching safer.
+
+
+
+** Decision rule
+
+If the change only saves paint or chrome and does not reduce repeated text-property search, it is a mitigation, not a fix.
+
+If the change removes duplicated discovery work in the hot path, it is a real fix.

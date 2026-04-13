@@ -1,0 +1,52 @@
+* Notification Hot Path Plan
+
+** Current diagnosis
+
+The remaining hotspot is not one expensive call, but repeated work inside `agent-shell--on-notification`:
+
+1. Multiple nested `map-nested-elt` lookups for the same notification fields.
+2. Multiple `agent-shell--update-fragment` calls for one event.
+3. Frequent follow-up header refreshes.
+
+The first two issues are the best next targets because they can reduce CPU without changing UX semantics.
+
+** What is already done
+
+1. Baseline metrics captured.
+2. Fragment range reuse landed.
+3. Mode-line menu caching landed with invalidation.
+
+** Step 2 complete: Cached notification field lookups
+
+The refactoring of `agent-shell--on-notification` is now complete:
+
+- 16 unique paths cached in a `let*` binding
+- 74 repeated `map-nested-elt` calls eliminated
+- All 73 tests pass (3 pre-existing failures unrelated to this change)
+- No behavior changes - only reduced duplicate work
+
+The function now extracts notification fields once at the top and reuses them across all branches.
+
+** Remaining hot path tasks
+
+The remaining optimization levers are:
+
+1. Fragment fan-out: reduce duplicate `agent-shell--update-fragment` calls per notification.
+2. Markdown overlays: skip re-running on unchanged regions.
+3. Header/mode-line: cache state deltas instead of full rebuilds.
+
+** Verification completed
+
+Ran tests: 73/73 passed with expected status (3 pre-existing failures unchanged).
+
+No regression detected in notification/fragment behavior.
+
+** Do not do yet
+
+1. Do not batch unrelated notifications together.
+2. Do not remove markdown overlays entirely.
+3. Do not change permission or tool-call event semantics.
+
+** Verification rule
+
+After the refactor, rerun the focused tests for notification and fragment behavior, then compare the same profile again.

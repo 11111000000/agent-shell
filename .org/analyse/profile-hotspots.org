@@ -1,0 +1,149 @@
+* Profile Hotspots
+
+Источник: предоставленный CPU profile.
+
+** Рейтинг тормозящих функций
+
+| Rank | Function | Share | What the profile shows |
+|------+----------+-------+------------------------|
+| 1 | `agent-shell--on-notification` | 58% | Основная точка входа для входящих ACP notification |
+| 2 | `agent-shell-ui--read-fragment-at-point` | 25% | Чтение и поиск текущего фрагмента по свойствам текста |
+| 3 | `agent-shell-ui--block-range` | 25% | Поиск границ блока по text properties |
+| 4 | `agent-shell-ui--nearest-range-matching-property` | 25% | Двойной `text-property-search-backward/forward` |
+| 5 | `text-property-search-backward` | 25% | Внутренний поиск по свойствам текста |
+| 6 | `agent-shell--update-header-and-mode-line` | 10% | Пересборка header/mode-line на обновлениях |
+| 7 | `agent-shell--make-header` | 8% | Сборка графического/текстового header |
+| 8 | `agent-shell--mode-line-model-menu` | 8% | Построение меню модели с обходом списка моделей |
+| 9 | `agent-shell--project-name` / `projectile-project-root` | 8% / 8% | Частые вычисления project root/name |
+| 10 | `markdown-overlays-put` | 3% | Повторное markdown fontification/rendering |
+
+** Реальные причины торможения
+
+*** 1. Повторный линейный поиск по свойствам текста на каждом апдейте
+
+В `agent-shell-ui-update-fragment` сначала ищется существующий блок:
+
+`(text-property-search-backward 'agent-shell-ui-state nil ... t)`
+
+Потом, если блок найден, вызывается `agent-shell-ui--read-fragment-at-point`, а там снова:
+
+`agent-shell-ui--block-range` -> `agent-shell-ui--nearest-range-matching-property`
+
+Это дает несколько поисков по text properties для каждого обновления фрагмента.
+
+Ссылки:
+- `agent-shell-ui.el:84-90`
+- `agent-shell-ui.el:96-111`
+- `agent-shell-ui.el:212-231`
+- `agent-shell-ui.el:233-251`
+
+*** 2. `agent-shell-ui--nearest-range-matching-property` делает два поиска вместо одного
+
+Функция сначала ищет назад, потом вперед:
+
+`text-property-search-backward`
+`text-property-search-forward`
+
+Плюс внутри есть дополнительный `forward-char 1` и повторный backward-search при промахе.
+
+Это видно в профиле как ядро времени внутри `block-range` и `read-fragment-at-point`.
+
+Ссылка:
+- `agent-shell-ui.el:233-251`
+
+*** 3. Обновление одного notification часто запускает несколько UI-обновлений подряд
+
+В `agent-shell--on-notification` один notification может вызвать несколько `agent-shell--update-fragment` подряд:
+
+- tool call update
+- plan
+- agent thought chunk
+- agent message chunk
+- user message chunk
+- available commands
+- tool-call update
+
+Каждый такой вызов заново делает поиск блока, пересборку модели и обработку markdown overlays.
+
+Ссылка:
+- `agent-shell.el:1427-1741`
+
+*** 4. `agent-shell--update-header-and-mode-line` слишком часто пересобирается
+
+Он вызывается не только при явной смене состояния, но и на многих notification paths и bootstrap stages.
+
+Внутри он зовет `agent-shell--make-header`, а тот снова:
+
+- собирает `header-model`
+- вычисляет `agent-shell--project-name`
+- вычисляет `agent-shell--context-usage-indicator`
+- вычисляет `agent-shell--busy-indicator-frame`
+- иногда строит графический SVG header
+
+Ссылки:
+- `agent-shell.el:3445-3458`
+- `agent-shell.el:3160-3196`
+- `agent-shell.el:3204-3435`
+- `agent-shell.el:6153-6165`
+- `agent-shell-usage.el:238-253`
+- `agent-shell-project.el:85-98`
+
+*** 5. `agent-shell--mode-line-model-menu` и `agent-shell--mode-line-mode-menu` обходят списки при каждом построении
+
+Обе функции делают `seq-do` по доступным моделям/режимам и создают keymap/menu items заново.
+
+Потом `agent-shell--make-header` использует их через `where-is-internal`, `key-description` и menu-related properties.
+
+Ссылки:
+- `agent-shell.el:6167-6226`
+- `agent-shell.el:3204-3435`
+
+*** 6. `markdown-overlays-put` добавляет цену на каждый фрагмент
+
+После `agent-shell-ui-update-fragment` код всегда применяет markdown overlays к body и right label.
+
+Это происходит в shell buffer и в viewport buffer.
+
+В профиле есть отдельные затраты на `markdown-overlays-put`, `markdown-overlays--source-blocks`, `markdown-overlays--markdown-headers`, `markdown-overlays--find-tables`.
+
+Ссылка:
+- `agent-shell.el:2879-2970`
+
+*** 7. Много мусора и GC
+
+`Automatic GC` занимает 16%.
+
+Это согласуется с большим количеством временных объектов:
+- `concat`
+- `format`
+- `map-elt` / `map-nested-elt`
+- `buffer-substring`
+- сборка alist/list на каждом notification
+
+Это не отдельная гипотеза, а прямое следствие профиля и кода горячих путей.
+
+** Что именно я бы считал главной причиной
+
+Главная проблема не в одном тяжелом вызове, а в комбинации:
+
+1. На каждый inbound notification идет несколько UI updates.
+2. Каждый update делает повторный поиск блока через text properties.
+3. Затем еще раз ищет ranges внутри блока.
+4. Потом снова прогоняет markdown overlays.
+5. Параллельно часто перестраивается header/mode-line.
+
+Итог: много мелких, но частых O(n)-операций и аллокаций на поток сообщений.
+
+** Что не подтверждено
+
+- Я не делал предположений о внутреннем устройстве `markdown-overlays`, кроме того, что вызовы в профиле занимают время.
+- Я не утверждаю, что именно `projectile` или `where-is-internal` являются единственной проблемой. Они просто реально видны в горячем пути header refresh.
+
+** Конфиг и код
+
+Есть важное разделение:
+
+1. Конфиг может убрать часть redraw/overlay/header стоимости.
+2. Но повторные text-property search и многократные update calls требуют правки кода.
+
+Это значит, что конфиг помогает только как временный обход, а не как устранение причины.

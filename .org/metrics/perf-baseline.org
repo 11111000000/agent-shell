@@ -1,0 +1,17 @@
+* Baseline Metrics
+
+Captured after adding performance tests.
+
+* `agent-shell-ui-update-fragment`
+
+- time: 0.005755
+- gc-time: 0.000000
+- gcs: 0
+- conses: 84953
+
+* `agent-shell--make-header`
+
+- time: 0.056772
+- gc-time: 0.000000
+- gcs: 0
+- conses: 133951
