@@ -3231,7 +3231,7 @@ When provided, included in help-echo tooltips."
                                                             'mouse-face 'mode-line-highlight
                                                             'local-map (let ((map (make-sparse-keymap)))
                                                                          (define-key map [header-line mouse-1]
-                                                                                     (agent-shell--mode-line-model-menu))
+                                                                                     (agent-shell--cached-mode-line-model-menu))
                                                                          map)))
                                 "")
                               (if (map-elt header-model :mode-name)
@@ -3243,7 +3243,7 @@ When provided, included in help-echo tooltips."
                                                             'mouse-face 'mode-line-highlight
                                                             'local-map (let ((map (make-sparse-keymap)))
                                                                          (define-key map [header-line mouse-1]
-                                                                                     (agent-shell--mode-line-mode-menu))
+                                                                                     (agent-shell--cached-mode-line-mode-menu))
                                                                          map)))
                                 "")
                               (propertize (map-elt header-model :project-name) 'font-lock-face 'font-lock-string-face)

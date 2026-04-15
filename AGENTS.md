@@ -17,3 +17,5 @@ When contributing:
 ## Contributing
 
 This is an Emacs Lisp project. See [CONTRIBUTING.org](CONTRIBUTING.org) for style guidelines, code checks, and testing. Please adhere to these guidelines.
+
+If `.agent-shell/USER-AGENTS.md` exists, use it as the active source for user-specific instructions.
