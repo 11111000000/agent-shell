@@ -1,3 +1,5 @@
 /.agent-shell/
+.context/
+.org/
 
 *.elc
