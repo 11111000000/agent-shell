@@ -1300,7 +1300,7 @@ For example, offer to kill associated shell session."
 \\{agent-shell-viewport-edit-mode-map}"
   (cursor-intangible-mode +1)
   (setq buffer-read-only nil)
-  (when agent-shell-file-completion-enabled
+  (when (bound-and-true-p agent-shell-file-completion-enabled)
     (agent-shell-completion-mode +1))
   (agent-shell-viewport--update-header)
   (let ((inhibit-read-only t))

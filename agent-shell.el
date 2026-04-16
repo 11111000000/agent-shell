@@ -2739,7 +2739,7 @@ variable (see makunbound)"))
       (agent-shell--update-header-and-mode-line)
       (add-hook 'kill-buffer-hook #'agent-shell--clean-up nil t)
       (agent-shell-ui-mode +1)
-      (when agent-shell-file-completion-enabled
+      (when (bound-and-true-p agent-shell-file-completion-enabled)
         (agent-shell-completion-mode +1))
       (agent-shell--setup-modeline)
       (setq-local agent-shell--transcript-file (agent-shell--transcript-file-path))
