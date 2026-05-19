@@ -71,6 +71,7 @@ We now have a handful of additional packages to extend the =agent-shell= experie
 - sincebyte: [[https://neoemacs.com/posts/agent-shell-cursor-agent-cli/][Agent Shell Cursor Agent Cli]].
 - Naputo: [[https://blog.n-daisuke897.com/posts/2026-03-01-agent-shell-session-selection/][How to Select Sessions When Starting the agent-shell ACP Client Running on Emacs]]
 - vandee: [[https://www.vandee.art/blog/2026-01-23-my-agent-practice-with-opencode-in-emacs.html][My Agent Practice with OpenCode in Emacs]].
+- Fedora Project Wiki: [[https://fedoraproject.org/wiki/SIGs/AI-ML#agent-shell][AI/ML Special Interest Group]].
 
 * Icons
 
