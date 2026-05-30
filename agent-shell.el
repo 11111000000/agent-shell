@@ -1144,11 +1144,11 @@ Returns nil if no icon should be displayed."
                                  (map-elt config :icon-name))
                               (agent-shell--make-agent-fallback-icon
                                (map-elt config :buffer-name) 100)))
-             (type-supported (image-supported-file-p icon-filename)))
-    (with-temp-buffer
-      (insert-image (create-image icon-filename nil nil
+             (image (create-image icon-filename nil nil
                                   :ascent 'center
-                                  :height (frame-char-height)))
+                                  :height (frame-char-height))))
+    (with-temp-buffer
+      (insert-image image)
       (buffer-string))))
 
 (cl-defun agent-shell-select-config (&key prompt)
