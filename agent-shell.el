@@ -3534,14 +3534,16 @@ When provided, included in help-echo tooltips."
                                   (concat " ➤ " (map-elt header-model :session-id))
                                 "")
                               (if (map-elt header-model :context-indicator)
-                                  (concat (if (> (length (map-elt header-model :context-indicator)) 1) " ➤ " " ")
+                                  (concat (if (> (length (map-elt header-model :context-indicator)) 1)
+                                              " ➤ "
+                                            " ")
                                           (map-elt header-model :context-indicator))
-                                "")
-                              (if (map-elt header-model :busy-indicator-frame)
-                                  (map-elt header-model :busy-indicator-frame)
                                 "")
                               (if (map-elt header-model :status)
                                   (concat " ➤ " (map-elt header-model :status))
+                                "")
+                              (if (map-elt header-model :busy-indicator-frame)
+                                  (map-elt header-model :busy-indicator-frame)
                                 ""))))
     (pcase agent-shell-header-style
       ((or 'none (pred null)) nil)
@@ -3659,12 +3661,6 @@ When provided, included in help-echo tooltips."
                                                                                     'default)))
                                                                       (dx . "8"))
                                                                     (format-mode-line (map-elt header-model :context-indicator)))))
-                                      (when (map-elt header-model :busy-indicator-frame)
-                                        (dom-append-child text-node
-                                                          (dom-node 'tspan
-                                                                    `((fill . ,(agent-shell--svg-fill-color 'default))
-                                                                      (dx . "8"))
-                                                                    (map-elt header-model :busy-indicator-frame))))
                                       text-node))
                    ;; Bottom text line
                    (svg--append svg (let ((text-node (dom-node 'text
@@ -3704,7 +3700,7 @@ When provided, included in help-echo tooltips."
                                                                     `((fill . ,(agent-shell--svg-fill-color 'font-lock-constant-face))
                                                                       (dx . "8"))
                                                                     (substring-no-properties (map-elt header-model :session-id)))))
-                                      ;; Status (optional, end of line)
+                                      ;; Status (optional)
                                       (when (map-elt header-model :status)
                                         (dom-append-child text-node
                                                           (dom-node 'tspan
@@ -3718,6 +3714,12 @@ When provided, included in help-echo tooltips."
                                                                                     'default)))
                                                                       (dx . "8"))
                                                                     (substring-no-properties (map-elt header-model :status)))))
+                                      (when (map-elt header-model :busy-indicator-frame)
+                                        (dom-append-child text-node
+                                                          (dom-node 'tspan
+                                                                    `((fill . ,(agent-shell--svg-fill-color 'default))
+                                                                      (dx . "8"))
+                                                                    (map-elt header-model :busy-indicator-frame))))
                                       text-node))
                    ;; Bindings row (last row if bindings present)
                    (when bindings
