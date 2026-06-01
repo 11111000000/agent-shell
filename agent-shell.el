@@ -4562,7 +4562,7 @@ Falls back to latest session in batch mode (e.g. tests)."
         (car acp-sessions)
       (let* ((other-shells (seq-remove (lambda (b) (eq b (current-buffer)))
                                        (agent-shell-buffers)))
-             (new-session-choice "Start new shell")
+             (new-session-choice "New shell")
              (columns (agent-shell--session-selection-columns))
              (max-widths (when acp-sessions
                            (mapcar (lambda (col)
